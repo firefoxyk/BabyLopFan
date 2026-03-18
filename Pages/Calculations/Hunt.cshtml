@@ -1,0 +1,253 @@
+@page
+@model GuildApp.Pages.Calculations.HuntModel
+@using System.Globalization
+@{
+    ViewData["Title"] = "Охота";
+    var ru = new CultureInfo("ru-RU");
+
+    string Fmt(long n) => n.ToString("N0", ru);
+
+    string LocClass(string name) =>
+        GuildApp.Pages.Calculations.HuntModel.LocationCssClass
+            .TryGetValue(name, out var c) ? c : "";
+}
+
+<style>
+/* ===== Стиль "под Excel" ===== */
+.hunt-table {
+    border-collapse: collapse;
+    font-size: 12px;
+    width: 100%;
+}
+.hunt-table th,
+.hunt-table td {
+    border: 1px solid #999;
+    padding: 2px 5px;
+    white-space: nowrap;
+}
+.hunt-table th {
+    background: #dce6f1;
+    text-align: center;
+    font-weight: 600;
+}
+.hunt-table td {
+    text-align: right;
+}
+.hunt-table td.td-left {
+    text-align: left;
+}
+.hunt-table td.td-center {
+    text-align: center;
+}
+.hunt-table tr.row-selected td {
+    background: #eaf4e8;
+}
+.tr-total td {
+    background: #e2efda;
+    font-weight: bold;
+}
+.tr-remainder td {
+    font-weight: bold;
+    background: #fff;
+}
+.green { color: #1a7a1a; }
+.red   { color: #c00000; }
+.col-active {
+    background: #bdd7ee !important;
+}
+.loc-kustarn   { color: #8B6914; font-weight: 600; }
+.loc-gorn-les  { color: #6B3A10; font-weight: 600; }
+.loc-chasha    { color: #C06000; font-weight: 600; }
+.loc-sn-hrebet { color: #1a3a6e; font-weight: 600; }
+.loc-sn-pik    { color: #2070a0; font-weight: 600; }
+.loc-yad       { color: #5a7a10; font-weight: 600; }
+.loc-obvet     { color: #904020; font-weight: 600; }
+.loc-tuman     { color: #107878; font-weight: 600; }
+.loc-pesch     { color: #9a6800; font-weight: 600; }
+.loc-ogni      { color: #7a1a00; font-weight: 600; }
+.btn-hunt {
+    padding: 3px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    border: 1px solid #666;
+    background: #f0f0f0;
+}
+.btn-hunt-primary {
+    background: #4472c4;
+    color: #fff;
+    border-color: #2a52a4;
+}
+.inf-input {
+    width: 160px;
+    font-size: 12px;
+    padding: 2px 5px;
+    border: 1px solid #999;
+    text-align: right;
+}
+.hunt-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 6px;
+    font-size: 13px;
+}
+</style>
+
+<h5 style="margin-bottom:8px;">🏹 Охота</h5>
+
+
+
+<form method="post">
+
+    <div class="hunt-header">
+        <label><b>Твоё влияние на данный момент:</b></label>
+        <input type="number"
+               name="MyInfluence"
+               value="@Model.MyInfluence"
+               class="inf-input" />
+
+        <button type="submit"
+                formaction="/Calculations/Hunt?handler=AutoSelect"
+                class="btn-hunt btn-hunt-primary">
+            Подобрать автоматически
+        </button>
+        <button type="submit"
+                formaction="/Calculations/Hunt?handler=Recalc"
+                class="btn-hunt">
+            Пересчитать по моему выбору
+        </button>
+    </div>
+
+    @{
+        // Определяем колонки один раз для всего шаблона
+        var cols = new[]
+        {
+            ("Crit15",  "Крит 1,5"),
+            ("Avg1514", "Ср.знач 1,5 и 1,4"),
+            ("Crit14",  "Крит 1,4"),
+            ("Avg1413", "Ср. знач 1,4 и 1,3"),
+            ("Crit13",  "Крит 1,3"),
+        };
+    }
+
+    <table class="hunt-table">
+        <thead>
+            <tr>
+                <th colspan="5" style="border:none;background:transparent;"></th>
+                @foreach (var (key, label) in cols)
+                {
+                    var isActive = Model.ActiveColumn == key;
+                    <th style="@(isActive ? "background:#bdd7ee;" : "background:#dce6f1;")">
+                        <label style="cursor:pointer;font-weight:normal;">
+                            <input type="radio"
+                                   name="ActiveColumn"
+                                   value="@key"
+                                   @(isActive ? "checked" : "") />
+                            ▼
+                        </label>
+                    </th>
+                }
+            </tr>
+            <tr>
+                <th style="text-align:center;">☑</th>
+                <th style="text-align:left;">Название локации</th>
+                <th>Монеты</th>
+                <th>Рек. влияние</th>
+                <th style="text-align:left;">Мясо</th>
+                @foreach (var (key, label) in cols)
+                {
+                    var isActive = Model.ActiveColumn == key;
+                    <th class="@(isActive ? "col-active" : "")">@label</th>
+                }
+            </tr>
+        </thead>
+
+        <tbody>
+            @foreach (var row in Model.Rows)
+            {
+                var trClass = row.IsSelected ? "row-selected" : "";
+                <tr class="@trClass">
+                    <td class="td-center">
+                        <input type="checkbox"
+                               name="SelectedLocations"
+                               value="@row.Name"
+                               @(row.IsSelected ? "checked" : "") />
+                    </td>
+                    <td class="td-left @LocClass(row.Name)">@row.Name</td>
+                    <td>@Fmt(row.Coins)</td>
+                    <td>@Fmt(row.RecInfluence)</td>
+                    <td class="td-left" style="font-size:11px;color:#555;">@row.Meat</td>
+                    @foreach (var (key, _) in cols)
+                    {
+                        var isActive = Model.ActiveColumn == key;
+                        long val = key switch
+                        {
+                            "Crit15"  => row.Crit15,
+                            "Avg1514" => row.Avg1514,
+                            "Crit14"  => row.Crit14,
+                            "Avg1413" => row.Avg1413,
+                            "Crit13"  => row.Crit13,
+                            _         => 0
+                        };
+                        if (row.IsSelected)
+                        {
+                            <td class="@(isActive ? "col-active" : "")">@Fmt(val)</td>
+                        }
+                        else
+                        {
+                            <td class="@(isActive ? "col-active" : "")" style="color:#bbb;"></td>
+                        }
+                    }
+                </tr>
+            }
+        </tbody>
+
+        <tfoot>
+            @if (Model.Rows.Any(r => r.IsSelected))
+            {
+                <tr class="tr-total">
+                    <td colspan="4" style="text-align:right;">Итого монет:</td>
+                    <td style="text-align:right;"><b>@Fmt(Model.TotalCoins)</b></td>
+                    @foreach (var (key, _) in cols)
+                    {
+                        var isActive = Model.ActiveColumn == key;
+                        long val = key switch
+                        {
+                            "Crit15"  => Model.TotalCrit15,
+                            "Avg1514" => Model.TotalAvg1514,
+                            "Crit14"  => Model.TotalCrit14,
+                            "Avg1413" => Model.TotalAvg1413,
+                            "Crit13"  => Model.TotalCrit13,
+                            _         => 0
+                        };
+                        <td class="@(isActive ? "col-active" : "")">
+                            Итого влияния<br/><b>@Fmt(val)</b>
+                        </td>
+                    }
+                </tr>
+                <tr class="tr-remainder">
+                    <td colspan="5" style="text-align:right;">Остаток влияния:</td>
+                    @foreach (var (key, _) in cols)
+                    {
+                        var isActive = Model.ActiveColumn == key;
+                        long total = key switch
+                        {
+                            "Crit15"  => Model.TotalCrit15,
+                            "Avg1514" => Model.TotalAvg1514,
+                            "Crit14"  => Model.TotalCrit14,
+                            "Avg1413" => Model.TotalAvg1413,
+                            "Crit13"  => Model.TotalCrit13,
+                            _         => 0
+                        };
+                        long rem = Model.MyInfluence - total;
+                        var cls = rem >= 0 ? "green" : "red";
+                        <td class="@cls @(isActive ? "col-active" : "")">
+                            <b>@Fmt(rem)</b>
+                        </td>
+                    }
+                </tr>
+            }
+        </tfoot>
+    </table>
+
+</form>

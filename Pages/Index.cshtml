@@ -1,0 +1,59 @@
+@page
+@model GuildApp.Pages.IndexModel
+@{
+    ViewData["Title"] = "Главная";
+}
+
+<h2>Добро пожаловать, @Model.GuildNickname!</h2>
+<p class="text-muted">Выберите нужный расчёт в меню выше или нажмите на карточку.</p>
+
+<div class="row mt-4">
+    <div class="col-md-4 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">🏹 Охота</h5>
+                <a href="/Calculations/Hunt" class="btn btn-outline-primary btn-sm mt-2">Открыть</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">🌟 Всемирная слава</h5>
+                <a href="/Calculations/WorldFame" class="btn btn-outline-primary btn-sm mt-2">Открыть</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">❤️ Близость</h5>
+                <a href="/Calculations/Closeness" class="btn btn-outline-primary btn-sm mt-2">Открыть</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">🤝 Помощник</h5>
+                <a href="/Calculations/Assistant" class="btn btn-outline-primary btn-sm mt-2">Открыть</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">⚡ Власть</h5>
+                <a href="/Calculations/Power" class="btn btn-outline-primary btn-sm mt-2">Открыть</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">🍽️ Банкеты</h5>
+                <a href="/Calculations/Banquets" class="btn btn-outline-primary btn-sm mt-2">Открыть</a>
+            </div>
+        </div>
+    </div>
+</div>

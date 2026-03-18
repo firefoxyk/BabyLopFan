@@ -1,0 +1,73 @@
+@page
+@model GuildApp.Pages.Calculations.WorldFameModel
+@{
+    ViewData["Title"] = "Всемирная слава";
+}
+
+<h2>🌟 Всемирная слава</h2>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="post">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label asp-for="CurrentPoints" class="form-label">Текущие очки</label>
+                    <input asp-for="CurrentPoints" class="form-control" type="number" step="any" />
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="TargetPoints" class="form-label">Целевые очки</label>
+                    <input asp-for="TargetPoints" class="form-control" type="number" step="any" />
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="Attempts" class="form-label">Попытки</label>
+                    <input asp-for="Attempts" class="form-control" type="number" />
+                </div>
+            </div>
+            <div class="mt-3 d-flex flex-wrap gap-2 align-items-center">
+                <button type="submit" asp-page-handler="Calculate" class="btn btn-primary">Рассчитать</button>
+                @if (Model.Result.HasValue)
+                {
+                    <span class="fs-5 fw-bold">Результат: <span class="text-success">@Model.Result</span></span>
+                    <button type="submit" asp-page-handler="Save" class="btn btn-success">Сохранить результат</button>
+                }
+            </div>
+        </form>
+    </div>
+</div>
+
+@if (Model.SavedMessage != null)
+{
+    <div class="alert alert-success">@Model.SavedMessage</div>
+}
+
+<h4>История расчётов</h4>
+@if (!Model.History.Any())
+{
+    <p class="text-muted">Нет сохранённых расчётов.</p>
+}
+else
+{
+    <table class="table table-bordered table-sm">
+        <thead class="table-dark">
+            <tr>
+                <th>Дата</th>
+                <th>Текущие</th>
+                <th>Целевые</th>
+                <th>Попытки</th>
+                <th>Результат</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in Model.History)
+            {
+                <tr>
+                    <td>@item.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                    <td>@item.CurrentPoints</td>
+                    <td>@item.TargetPoints</td>
+                    <td>@item.Attempts</td>
+                    <td>@item.Result</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
