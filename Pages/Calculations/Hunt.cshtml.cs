@@ -68,6 +68,10 @@ public class HuntModel : PageModel
     [BindProperty]
     public string ActiveColumn { get; set; } = "Avg1514";
 
+    // Выбранная стратегия автоподбора
+    [BindProperty]
+    public AutoSelectStrategy SelectedStrategy { get; set; } = AutoSelectStrategy.MaximumCoins;
+
     // Имена локаций, отмеченных чекбоксами
     [BindProperty]
     public List<string> SelectedLocations { get; set; } = new();
@@ -97,15 +101,15 @@ public class HuntModel : PageModel
 
     // -------------------------------------------------------
     // POST "Подобрать автоматически":
-    // запускаем жадный алгоритм, обновляем чекбоксы
+    // запускаем автоподбор, обновляем чекбоксы
     // -------------------------------------------------------
     public IActionResult OnPostAutoSelect()
     {
         // Строим все строки с расчётами
         BuildRows(new HashSet<string>());
 
-        // Жадный автоподбор по активной колонке
-        SelectedLocations = AutoSelect(Rows, MyInfluence, ActiveColumn);
+        // Автоподбор по активной колонке и выбранной стратегии
+        SelectedLocations = AutoSelect(Rows, MyInfluence, ActiveColumn, SelectedStrategy);
 
         // Перестраиваем строки с учётом нового выбора
         BuildRows(SelectedLocations.ToHashSet());
@@ -149,43 +153,104 @@ public class HuntModel : PageModel
     }
 
     // -------------------------------------------------------
-    // Жадный автоподбор (greedy by efficiency)
-    //
-    // Алгоритм:
-    // 1. Для каждой локации считаем «выгодность»:
-    //    монеты / стоимость_по_активной_колонке
-    // 2. Сортируем по убыванию выгодности
-    // 3. Берём локации по порядку, пока хватает влияния
-    // 4. Делаем один проход улучшений: пробуем заменить
-    //    каждую выбранную локацию на невыбранную,
-    //    если это даёт больше монет без превышения бюджета
-    //
-    // Почему жадный, а не полный перебор:
-    // - локаций 27, влияние до ~850 000 000 → полный рюкзак
-    //   по весу невозможен из-за огромного диапазона весов
-    // - жадный по эффективности даёт практически хороший
-    //   результат для задач такого типа
+    // Автоподбор по выбранной стратегии
     // -------------------------------------------------------
     private static List<string> AutoSelect(
-        List<HuntRow> rows, long budget, string col)
+        List<HuntRow> rows, long budget, string col, AutoSelectStrategy strategy)
     {
         if (budget <= 0) return new();
 
-        // Получаем стоимость строки по активной колонке
-        long Cost(HuntRow r) => col switch
+        return strategy switch
         {
-            "Crit15" => r.Crit15,
-            "Avg1514" => r.Avg1514,
-            "Crit14" => r.Crit14,
-            "Avg1413" => r.Avg1413,
-            "Crit13" => r.Crit13,
-            _ => r.Avg1514
+            AutoSelectStrategy.MeatFirst => AutoSelectMeatFirst(rows, budget, col),
+            _ => AutoSelectMaximumCoins(rows, budget, col)
         };
+    }
 
-        // Сортируем по монеты/стоимость убыванию
+    // -------------------------------------------------------
+    // Стратегия 1 — максимум монет
+    // -------------------------------------------------------
+    private static List<string> AutoSelectMaximumCoins(
+        List<HuntRow> rows, long budget, string col)
+    {
+        return GreedySelect(rows, budget, col)
+            .Select(r => r.Name)
+            .ToList();
+    }
+
+    // -------------------------------------------------------
+    // Стратегия 2 — сначала локации с мясом
+    // -------------------------------------------------------
+    private static List<string> AutoSelectMeatFirst(
+        List<HuntRow> rows, long budget, string col)
+    {
+        var meatRows = rows
+            .Where(IsMeatLocation)
+            .ToList();
+
+        var otherRows = rows
+            .Where(r => !IsMeatLocation(r))
+            .ToList();
+
+        long Cost(HuntRow r) => GetCost(r, col);
+
+        var chosen = new List<HuntRow>();
+        long remaining = budget;
+
+        long allMeatCost = meatRows.Sum(Cost);
+
+        // Сценарий A: все мясные помещаются
+        if (allMeatCost <= budget)
+        {
+            chosen.AddRange(meatRows);
+            remaining -= allMeatCost;
+        }
+        // Сценарий B: мясные не помещаются — выбираем среди них лучший набор
+        else
+        {
+            var selectedMeat = GreedySelect(meatRows, budget, col);
+            chosen.AddRange(selectedMeat);
+            remaining -= selectedMeat.Sum(Cost);
+        }
+
+        // Добираем остальные локации по максимуму монет
+        if (remaining > 0)
+        {
+            var selectedNames = chosen.Select(r => r.Name).ToHashSet();
+
+            var additional = GreedySelect(
+                otherRows.Where(r => !selectedNames.Contains(r.Name)).ToList(),
+                remaining,
+                col);
+
+            chosen.AddRange(additional);
+        }
+
+        return chosen
+            .Select(r => r.Name)
+            .Distinct()
+            .ToList();
+    }
+
+    // -------------------------------------------------------
+    // Базовый жадный алгоритм:
+    // 1. эффективность = монеты / стоимость
+    // 2. сортировка по убыванию эффективности
+    // 3. выбираем, пока хватает бюджета
+    // 4. один проход локальных улучшений заменой
+    // -------------------------------------------------------
+    private static List<HuntRow> GreedySelect(
+        List<HuntRow> rows, long budget, string col)
+    {
+        if (budget <= 0 || rows.Count == 0)
+            return new();
+
+        long Cost(HuntRow r) => GetCost(r, col);
+
         var sorted = rows
             .Where(r => Cost(r) > 0 && Cost(r) <= budget)
             .OrderByDescending(r => (double)r.Coins / Cost(r))
+            .ThenByDescending(r => r.Coins)
             .ToList();
 
         var chosen = new HashSet<string>();
@@ -202,30 +267,47 @@ public class HuntModel : PageModel
             }
         }
 
-        // Шаг 2: одна итерация локальных улучшений —
-        // пробуем заменить выбранное на невыбранное выгоднее
+        // Шаг 2: одна итерация локальных улучшений
         var notChosen = sorted.Where(r => !chosen.Contains(r.Name)).ToList();
-        foreach (var outRow in chosen.ToList())
-        {
-            var outR = rows.First(r => r.Name == outRow);
-            long freed = remaining + Cost(outR);
 
-            foreach (var inR in notChosen.OrderByDescending(r => r.Coins))
+        foreach (var outName in chosen.ToList())
+        {
+            var outRow = rows.First(r => r.Name == outName);
+            long freed = remaining + Cost(outRow);
+
+            foreach (var inRow in notChosen.OrderByDescending(r => r.Coins))
             {
-                if (Cost(inR) <= freed && inR.Coins > outR.Coins)
+                if (Cost(inRow) <= freed && inRow.Coins > outRow.Coins)
                 {
-                    // Замена выгодна
-                    chosen.Remove(outRow);
-                    chosen.Add(inR.Name);
-                    notChosen.Remove(inR);
-                    notChosen.Add(outR);
+                    chosen.Remove(outName);
+                    chosen.Add(inRow.Name);
+
+                    notChosen.Remove(inRow);
+                    notChosen.Add(outRow);
+
+                    remaining = freed - Cost(inRow);
                     break;
                 }
             }
         }
 
-        return chosen.ToList();
+        return rows
+            .Where(r => chosen.Contains(r.Name))
+            .ToList();
     }
+
+    private static long GetCost(HuntRow r, string col) => col switch
+    {
+        "Crit15" => r.Crit15,
+        "Avg1514" => r.Avg1514,
+        "Crit14" => r.Crit14,
+        "Avg1413" => r.Avg1413,
+        "Crit13" => r.Crit13,
+        _ => r.Avg1514
+    };
+
+    private static bool IsMeatLocation(HuntRow row) =>
+        !string.IsNullOrWhiteSpace(row.Meat);
 }
 
 // -------------------------------------------------------
@@ -276,4 +358,10 @@ public class HuntRow
         Avg1514 = (long)Math.Round((Crit15 + Crit14) / 2.0, MidpointRounding.AwayFromZero);
         Avg1413 = (long)Math.Round((Crit14 + Crit13) / 2.0, MidpointRounding.AwayFromZero);
     }
+}
+
+public enum AutoSelectStrategy
+{
+    MaximumCoins = 1,
+    MeatFirst = 2
 }

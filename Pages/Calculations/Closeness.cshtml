@@ -1,73 +1,516 @@
 @page
 @model GuildApp.Pages.Calculations.ClosenessModel
+@using System.Globalization
 @{
     ViewData["Title"] = "Близость";
+
+
+
+    var ru = new CultureInfo("ru-RU");
+
+    string Fmt(long n) => n.ToString("N0", ru);
 }
 
-<h2>❤️ Близость</h2>
+<style>
+    /* ===== Стиль Hunt ===== */
+    .hunt-table {
+        border-collapse: collapse;
+        font-size: 12px;
+        width: 100%;
+    }
 
-<div class="card mb-4">
-    <div class="card-body">
-        <form method="post">
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <label asp-for="CurrentPoints" class="form-label">Текущие очки</label>
-                    <input asp-for="CurrentPoints" class="form-control" type="number" step="any" />
-                </div>
-                <div class="col-md-4">
-                    <label asp-for="TargetPoints" class="form-label">Целевые очки</label>
-                    <input asp-for="TargetPoints" class="form-control" type="number" step="any" />
-                </div>
-                <div class="col-md-4">
-                    <label asp-for="Attempts" class="form-label">Попытки</label>
-                    <input asp-for="Attempts" class="form-control" type="number" />
-                </div>
-            </div>
-            <div class="mt-3 d-flex flex-wrap gap-2 align-items-center">
-                <button type="submit" asp-page-handler="Calculate" class="btn btn-primary">Рассчитать</button>
-                @if (Model.Result.HasValue)
-                {
-                    <span class="fs-5 fw-bold">Результат: <span class="text-success">@Model.Result</span></span>
-                    <button type="submit" asp-page-handler="Save" class="btn btn-success">Сохранить результат</button>
-                }
-            </div>
-        </form>
-    </div>
-</div>
+        .hunt-table th,
+        .hunt-table td {
+            border: 1px solid #999;
+            padding: 2px 5px;
+            white-space: nowrap;
+        }
 
-@if (Model.SavedMessage != null)
-{
-    <div class="alert alert-success">@Model.SavedMessage</div>
-}
+        .hunt-table th {
+            background: #dce6f1;
+            text-align: center;
+            font-weight: 600;
+        }
 
-<h4>История расчётов</h4>
-@if (!Model.History.Any())
-{
-    <p class="text-muted">Нет сохранённых расчётов.</p>
-}
-else
-{
-    <table class="table table-bordered table-sm">
-        <thead class="table-dark">
-            <tr>
-                <th>Дата</th>
-                <th>Текущие</th>
-                <th>Целевые</th>
-                <th>Попытки</th>
-                <th>Результат</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var item in Model.History)
-            {
-                <tr>
-                    <td>@item.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
-                    <td>@item.CurrentPoints</td>
-                    <td>@item.TargetPoints</td>
-                    <td>@item.Attempts</td>
-                    <td>@item.Result</td>
-                </tr>
+        .hunt-table td {
+            text-align: right;
+        }
+
+            .hunt-table td.td-left {
+                text-align: left;
             }
-        </tbody>
-    </table>
-}
+
+            .hunt-table td.td-center {
+                text-align: center;
+            }
+
+    .tr-total td {
+        background: #e2efda;
+        font-weight: bold;
+    }
+
+    .tr-remainder td {
+        font-weight: bold;
+        background: #fff;
+    }
+
+    .green {
+        color: #1a7a1a;
+    }
+
+    .red {
+        color: #c00000;
+    }
+
+    .btn-hunt {
+        padding: 3px 12px;
+        font-size: 12px;
+        cursor: pointer;
+        border: 1px solid #666;
+        background: #f0f0f0;
+    }
+
+    .btn-hunt-primary {
+        background: #4472c4;
+        color: #fff;
+        border-color: #2a52a4;
+    }
+
+    .inf-input {
+        width: 160px;
+        font-size: 12px;
+        padding: 2px 5px;
+        border: 1px solid #999;
+        text-align: right;
+    }
+
+    .hunt-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 6px;
+        font-size: 13px;
+        flex-wrap: wrap;
+    }
+
+    .strategy-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .strategy-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+    }
+
+    /* ===== Страница Близость ===== */
+    .closeness-layout {
+        display: flex;
+        align-items: flex-start;
+        gap: 18px;
+        flex-wrap: wrap;
+    }
+
+    .closeness-panel {
+        flex: 0 0 auto;
+    }
+
+    .closeness-panel-left {
+        width: 540px;
+        max-width: 100%;
+    }
+
+    .closeness-panel-right {
+        width: 430px;
+        max-width: 100%;
+    }
+
+    .closeness-title {
+        background: #c9b47a !important;
+        font-weight: 700 !important;
+        font-size: 14px;
+        text-align: center !important;
+        padding: 8px 6px !important;
+        white-space: normal !important;
+    }
+
+    .closeness-name {
+        text-align: left !important;
+        font-weight: 600;
+        white-space: normal !important;
+        word-break: keep-all;
+    }
+
+    .closeness-input-cell {
+        text-align: center !important;
+    }
+
+    .closeness-input {
+        width: 90px;
+    }
+
+    .closeness-range {
+        font-weight: 600;
+    }
+
+    .summary-row td {
+        background: #e4dfec;
+        font-weight: 700;
+    }
+
+    .summary-name {
+        text-align: left !important;
+        white-space: normal !important;
+    }
+
+    .summary-code {
+        text-align: center !important;
+        width: 90px;
+    }
+
+    .separator-top td {
+        border-top: 3px solid #666 !important;
+    }
+
+    .radio-wrap {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .radio-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .value-cell {
+        font-weight: 700;
+    }
+
+    .tooltip-wrap {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        margin-left: 6px;
+    }
+
+    .tooltip-trigger {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border: 1px solid #666;
+        border-radius: 50%;
+        font-size: 11px;
+        line-height: 1;
+        cursor: pointer;
+        background: #f8f8f8;
+        user-select: none;
+    }
+
+    .tooltip-box {
+        position: absolute;
+        top: 22px;
+        right: 0;
+        width: 280px;
+        background: #fffef7;
+        border: 1px solid #999;
+        box-shadow: 0 2px 8px rgba(0,0,0,.12);
+        padding: 8px 10px;
+        text-align: left;
+        white-space: normal;
+        z-index: 20;
+        font-size: 12px;
+    }
+
+        .tooltip-box.hidden {
+            display: none;
+        }
+
+    .tiny-note {
+        font-size: 11px;
+        color: #555;
+        margin-top: 6px;
+    }
+
+    @@media (max-width: 1100px) {
+        .closeness-panel-left,
+        .closeness-panel-right {
+            width: 100%;
+        }
+    }
+</style>
+
+<h5 style="margin-bottom:8px;">❤️ Близость</h5>
+
+<form method="post" asp-page-handler="Calculate">
+    <div class="hunt-header">
+        <button type="submit" class="btn-hunt btn-hunt-primary">Рассчитать</button>
+    </div>
+
+    <div class="closeness-layout">
+        <div class="closeness-panel closeness-panel-left">
+            <table class="hunt-table">
+                <colgroup>
+                    <col style="width: 52%;" />
+                    <col style="width: 18%;" />
+                    <col style="width: 30%;" />
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th colspan="3" class="closeness-title">Расчет количества очков близости</th>
+                    </tr>
+                    <tr>
+                        <th>Наименование</th>
+                        <th>Количество</th>
+                        <th>Близость по нему</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="closeness-name">Белый нефрит</td>
+                        <td class="closeness-input-cell">
+                            <input asp-for="WhiteJadeCount" type="number" min="0" class="inf-input closeness-input" />
+                        </td>
+                        <td class="value-cell">@Fmt(Model.WhiteJadeValue)</td>
+                    </tr>
+                    <tr>
+                        <td class="closeness-name">Агатовый нефрит</td>
+                        <td class="closeness-input-cell">
+                            <input asp-for="AgateJadeCount" type="number" min="0" class="inf-input closeness-input" />
+                        </td>
+                        <td class="value-cell">@Fmt(Model.AgateJadeValue)</td>
+                    </tr>
+                    <tr>
+                        <td class="closeness-name">Хотанский нефрит</td>
+                        <td class="closeness-input-cell">
+                            <input asp-for="HotanJadeCount" type="number" min="0" class="inf-input closeness-input" />
+                        </td>
+                        <td class="value-cell">@Fmt(Model.HotanJadeValue)</td>
+                    </tr>
+                    <tr>
+                        <td class="closeness-name">Нектар из манго</td>
+                        <td class="closeness-input-cell">
+                            <input asp-for="MangoNectarCount" type="number" min="0" class="inf-input closeness-input" />
+                        </td>
+                        <td class="value-cell">@Fmt(Model.MangoNectarValue)</td>
+                    </tr>
+                    <tr>
+                        <td class="closeness-name">Акционные предметы на 2000 опыта</td>
+                        <td class="closeness-input-cell">
+                            <input asp-for="PromoItemsCount" type="number" min="0" class="inf-input closeness-input" />
+                        </td>
+                        <td class="value-cell">@Fmt(Model.PromoItemsValue)</td>
+                    </tr>
+                    <tr>
+                        <td class="closeness-name">Мешки близости</td>
+                        <td class="closeness-input-cell">
+                            <input asp-for="ClosenessBagsCount" type="number" min="0" class="inf-input closeness-input" />
+                        </td>
+                        <td class="closeness-range">от @Fmt(Model.BagsMinValue) до @Fmt(Model.BagsMaxValue)</td>
+                    </tr>
+                    <tr>
+                        <td class="closeness-name">Парный рисовый шарик</td>
+                        <td class="closeness-input-cell">
+                            <input asp-for="RiceBallCount" type="number" min="0" class="inf-input closeness-input" />
+                        </td>
+                        <td class="closeness-range">от @Fmt(Model.RiceMinValue) до @Fmt(Model.RiceMaxValue)</td>
+                    </tr>
+                    <tr>
+                        <td class="closeness-name">Сказочный горшочек</td>
+                        <td class="closeness-input-cell">
+                            <input asp-for="FairyPotCount" type="number" min="0" class="inf-input closeness-input" />
+                        </td>
+                        <td class="closeness-range">от @Fmt(Model.PotMinValue) до @Fmt(Model.PotMaxValue)</td>
+                    </tr>
+
+                    <tr class="summary-row separator-top">
+                        <td class="summary-name">Минимум близости</td>
+                        <td class="summary-code">Итого 1:</td>
+                        <td>@Fmt(Model.MinTotal)</td>
+                    </tr>
+                    <tr class="summary-row">
+                        <td class="summary-name">Максимум близости</td>
+                        <td class="summary-code">Итого 2:</td>
+                        <td>@Fmt(Model.MaxTotal)</td>
+                    </tr>
+                    <tr class="summary-row">
+                        <td class="summary-name">Среднее значение</td>
+                        <td class="summary-code">Итого 3:</td>
+                        <td>@Fmt(Model.AverageTotal)</td>
+                    </tr>
+                    <tr class="summary-row">
+                        <td class="summary-name">Мин. близость + поместье</td>
+                        <td class="summary-code">Итого 4:</td>
+                        <td>@Fmt(Model.MinWithEstate)</td>
+                    </tr>
+                    <tr class="summary-row">
+                        <td class="summary-name">Макс. близость + поместье</td>
+                        <td class="summary-code">Итого 5:</td>
+                        <td>@Fmt(Model.MaxWithEstate)</td>
+                    </tr>
+                    <tr class="summary-row">
+                        <td class="summary-name">Ср. знач. + поместье</td>
+                        <td class="summary-code">Итого 6:</td>
+                        <td>@Fmt(Model.AverageWithEstate)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="closeness-panel closeness-panel-right">
+            <table class="hunt-table">
+                <colgroup>
+                    <col style="width: 62%;" />
+                    <col style="width: 38%;" />
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th colspan="2" class="closeness-title">
+                            <span>Пытаемся посчитать по теории вероятности опыт близости за трату шаров физ. силы</span>
+                            <span class="tooltip-wrap" id="physTooltipWrap">
+                                <span class="tooltip-trigger" id="physTooltipTrigger">?</span>
+                                <span class="tooltip-box hidden" id="physTooltipBox">
+                                    Условие 1. Открыты все города;<br />
+                                    Условие 2. Вы получаете 50 очков близости за встречу с близким другом (вне Пэнлай, разумеется).
+                                </span>
+                            </span>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="closeness-name">У Вас есть Полный абонемент</td>
+                        <td class="td-center">
+                            <div class="radio-wrap">
+                                <label class="radio-option">
+                                    <input type="radio" asp-for="HasFullPass" value="true" />
+                                    <span>Да</span>
+                                </label>
+                                <label class="radio-option">
+                                    <input type="radio" asp-for="HasFullPass" value="false" />
+                                    <span>Нет</span>
+                                </label>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="closeness-name">У Вас есть Месячный абонемент</td>
+                        <td class="td-center">
+                            <div class="radio-wrap">
+                                <label class="radio-option">
+                                    <input type="radio" asp-for="HasMonthPass" value="true" />
+                                    <span>Да</span>
+                                </label>
+                                <label class="radio-option">
+                                    <input type="radio" asp-for="HasMonthPass" value="false" />
+                                    <span>Нет</span>
+                                </label>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="closeness-name">Количество БД, которых Вы можете встретить в Пэнлай</td>
+                        <td class="closeness-input-cell">
+                            <input asp-for="PenglaiFriendsCount" type="number" min="0" class="inf-input closeness-input" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="closeness-name">Открыт ли Шэнь Линхуа</td>
+                        <td class="td-center">
+                            <div class="radio-wrap">
+                                <label class="radio-option">
+                                    <input type="radio" asp-for="IsShenLinghuaOpened" value="true" />
+                                    <span>Да</span>
+                                </label>
+                                <label class="radio-option">
+                                    <input type="radio" asp-for="IsShenLinghuaOpened" value="false" />
+                                    <span>Нет</span>
+                                </label>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="closeness-name">Количество шаров физ. силы</td>
+                        <td class="closeness-input-cell">
+                            <input asp-for="PhysicalPowerBallsCount" type="number" min="0" class="inf-input closeness-input" />
+                        </td>
+                    </tr>
+
+                    <tr class="summary-row separator-top">
+                        <td class="summary-name">Шанс встречи в обычном городе в %</td>
+                        <td>@Fmt(Model.RegularCityChancePercent)</td>
+                    </tr>
+                    <tr class="summary-row">
+                        <td class="summary-name">Шанс встречи в Пэнлай в %</td>
+                        <td>@Fmt(Model.PenglaiChancePercent)</td>
+                    </tr>
+                    <tr class="summary-row">
+                        <td class="summary-name">Близость за встречи в обычных городах</td>
+                        <td>@Fmt(Model.RegularCityCloseness)</td>
+                    </tr>
+                    <tr class="summary-row">
+                        <td class="summary-name">Близость за встречи в Пэнлай</td>
+                        <td>@Fmt(Model.PenglaiCloseness)</td>
+                    </tr>
+                    <tr class="summary-row">
+                        <td class="summary-name">Итого близости</td>
+                        <td>@Fmt(Model.PhysicalPowerTotalCloseness)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</form>
+
+<script>
+    (function () {
+        const wrap = document.getElementById('physTooltipWrap');
+        const trigger = document.getElementById('physTooltipTrigger');
+        const box = document.getElementById('physTooltipBox');
+
+        if (!wrap || !trigger || !box) {
+            return;
+        }
+
+        function showBox() {
+            box.classList.remove('hidden');
+        }
+
+        function hideBox() {
+            box.classList.add('hidden');
+        }
+
+        function toggleBox(e) {
+            e.stopPropagation();
+            box.classList.toggle('hidden');
+        }
+
+        trigger.addEventListener('mouseenter', showBox);
+        wrap.addEventListener('mouseenter', showBox);
+
+        wrap.addEventListener('mouseleave', function (e) {
+            if (!wrap.contains(e.relatedTarget)) {
+                hideBox();
+            }
+        });
+
+        trigger.addEventListener('click', toggleBox);
+        box.addEventListener('click', function (e) {
+            e.stopPropagation();
+        });
+
+        document.addEventListener('click', function (e) {
+            if (!wrap.contains(e.target)) {
+                hideBox();
+            }
+        });
+    })();
+</script>
