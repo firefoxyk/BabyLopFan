@@ -16,7 +16,6 @@ public class ClosenessModel : PageModel
     private readonly IClosenessCalculator _calculator;
     private readonly UserManager<ApplicationUser> _userManager;
 
-    private const long EstateBonus = 256500;
     private const long MinutesPerDay = 24 * 60;
     private const long CircleDays = 47;
 
@@ -38,7 +37,7 @@ public class ClosenessModel : PageModel
     public string? SavedMessage { get; set; }
     public List<ClosenessCalculation> History { get; set; } = new();
 
-    public bool ShowDeepFeelingsResults { get; set; }
+    [BindProperty] public bool ShowDeepFeelingsResults { get; set; }
 
     public class DeepFeelingCell
     {
@@ -259,9 +258,20 @@ public class ClosenessModel : PageModel
         PotMaxValue;
 
     public long AverageTotal => (MinTotal + MaxTotal) / 2L;
-    public long MinWithEstate => MinTotal + EstateBonus;
-    public long MaxWithEstate => MaxTotal + EstateBonus;
-    public long AverageWithEstate => AverageTotal + EstateBonus;
+
+    public long EstateClosenessTotal =>
+        TheaterDeepResult.ClosenessValues[0] +
+        TheaterDeepResult.ClosenessValues[1] +
+        TheaterDeepResult.ClosenessValues[2] +
+        TheaterDeepResult.ClosenessValues[3] +
+        AntiqueDeepResult.ClosenessValues[0] +
+        AntiqueDeepResult.ClosenessValues[1] +
+        AntiqueDeepResult.ClosenessValues[2] +
+        AntiqueDeepResult.ClosenessValues[3];
+
+    public long MinWithEstate => MinTotal + EstateClosenessTotal;
+    public long MaxWithEstate => MaxTotal + EstateClosenessTotal;
+    public long AverageWithEstate => AverageTotal + EstateClosenessTotal;
 
     // Вторая таблица
     public int FullPassBonus => HasFullPass ? 10 : 0;
@@ -350,6 +360,7 @@ public class ClosenessModel : PageModel
     public async Task<IActionResult> OnPostCalculateClosenessAsync()
     {
         NormalizeValues();
+        RebuildDeepFeelingsIfNeeded();
         await LoadHistory();
         return Page();
     }
@@ -357,6 +368,7 @@ public class ClosenessModel : PageModel
     public async Task<IActionResult> OnPostCalculatePhysicalAsync()
     {
         NormalizeValues();
+        RebuildDeepFeelingsIfNeeded();
         await LoadHistory();
         return Page();
     }
@@ -364,6 +376,7 @@ public class ClosenessModel : PageModel
     public async Task<IActionResult> OnPostCalculateEstateBuildingAsync()
     {
         NormalizeValues();
+        RebuildDeepFeelingsIfNeeded();
         await LoadHistory();
         return Page();
     }
@@ -371,6 +384,39 @@ public class ClosenessModel : PageModel
     public async Task<IActionResult> OnPostCalculateDeepFeelingsAsync()
     {
         NormalizeValues();
+        ShowDeepFeelingsResults = true;
+        RebuildDeepFeelingsIfNeeded();
+        await LoadHistory();
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostSaveAsync()
+    {
+        var userId = _userManager.GetUserId(User)!;
+        Result = _calculator.Calculate(CurrentPoints, TargetPoints, Attempts);
+
+        _db.ClosenessCalculations.Add(new ClosenessCalculation
+        {
+            UserId = userId,
+            CurrentPoints = CurrentPoints,
+            TargetPoints = TargetPoints,
+            Attempts = Attempts,
+            Result = Result ?? 0
+        });
+
+        await _db.SaveChangesAsync();
+        SavedMessage = "Результат сохранён.";
+        NormalizeValues();
+        await LoadHistory();
+        return Page();
+    }
+
+    private void RebuildDeepFeelingsIfNeeded()
+    {
+        if (!ShowDeepFeelingsResults && !HasDeepFeelingsInput())
+        {
+            return;
+        }
 
         TheaterDeepResult = BuildDeepFeelingSection(
             new List<int>
@@ -419,29 +465,17 @@ public class ClosenessModel : PageModel
             });
 
         ShowDeepFeelingsResults = true;
-        await LoadHistory();
-        return Page();
     }
 
-    public async Task<IActionResult> OnPostSaveAsync()
+    private bool HasDeepFeelingsInput()
     {
-        var userId = _userManager.GetUserId(User)!;
-        Result = _calculator.Calculate(CurrentPoints, TargetPoints, Attempts);
-
-        _db.ClosenessCalculations.Add(new ClosenessCalculation
-        {
-            UserId = userId,
-            CurrentPoints = CurrentPoints,
-            TargetPoints = TargetPoints,
-            Attempts = Attempts,
-            Result = Result ?? 0
-        });
-
-        await _db.SaveChangesAsync();
-        SavedMessage = "Результат сохранён.";
-        NormalizeValues();
-        await LoadHistory();
-        return Page();
+        return
+            TheaterWhipDeepLevel > 0 || TheaterFanDeepLevel > 0 || TheaterHatDeepLevel > 0 || TheaterMaskDeepLevel > 0 ||
+            AntiqueEmbroideryDeepLevel > 0 || AntiquePorcelainDeepLevel > 0 || AntiqueScrollDeepLevel > 0 || AntiqueJadeDecorationDeepLevel > 0 ||
+            TheaterWhipSpendResource > 0 || TheaterFanSpendResource > 0 || TheaterHatSpendResource > 0 || TheaterMaskSpendResource > 0 ||
+            AntiqueEmbroiderySpendResource > 0 || AntiquePorcelainSpendResource > 0 || AntiqueScrollSpendResource > 0 || AntiqueJadeDecorationSpendResource > 0 ||
+            TheaterWhipBonusLevel > 0 || TheaterFanBonusLevel > 0 || TheaterHatBonusLevel > 0 || TheaterMaskBonusLevel > 0 ||
+            AntiqueEmbroideryBonusLevel > 0 || AntiquePorcelainBonusLevel > 0 || AntiqueScrollBonusLevel > 0 || AntiqueJadeDecorationBonusLevel > 0;
     }
 
     private DeepFeelingSectionResult BuildDeepFeelingSection(

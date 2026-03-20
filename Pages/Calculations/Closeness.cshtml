@@ -421,14 +421,14 @@
                 </tr>
                 <tr class="summary-row separator-top">
                     <td class="summary-name">Итого</td>
-                    <td class="summary-code">Без резиденции</td>
+                    <td class="summary-code">Без поместья</td>
                     <td>@Fmt(Model.MinTotal)</td>
                     <td>@Fmt(Model.MaxTotal)</td>
                     <td>@Fmt(Model.AverageTotal)</td>
                 </tr>
                 <tr class="summary-row">
                     <td class="summary-name">Итого</td>
-                    <td class="summary-code">С резиденцией</td>
+                    <td class="summary-code">С поместьем</td>
                     <td>@Fmt(Model.MinWithEstate)</td>
                     <td>@Fmt(Model.MaxWithEstate)</td>
                     <td>@Fmt(Model.AverageWithEstate)</td>
@@ -738,3 +738,135 @@
         </table>
     </form>
 </div>
+
+<script>
+    (function () {
+        const storageKey = 'closeness-page-state';
+        const selector = 'input[name], select[name], textarea[name]';
+
+        function getFields() {
+            return Array.from(document.querySelectorAll(selector)).filter(function (field) {
+                return field.name !== '__RequestVerificationToken'
+                    && !field.classList.contains('js-page-state-hidden');
+            });
+        }
+
+        function loadState() {
+            try {
+                return JSON.parse(sessionStorage.getItem(storageKey) || '{}');
+            } catch {
+                return {};
+            }
+        }
+
+        function saveState() {
+            const state = {};
+
+            for (const field of getFields()) {
+                if (field.type === 'checkbox') {
+                    state[field.name] = field.checked;
+                    continue;
+                }
+
+                if (field.type === 'radio') {
+                    if (field.checked) {
+                        state[field.name] = field.value;
+                    }
+                    continue;
+                }
+
+                state[field.name] = field.value;
+            }
+
+            sessionStorage.setItem(storageKey, JSON.stringify(state));
+        }
+
+        function appendPageStateToForm(form) {
+            form.querySelectorAll('.js-page-state-hidden').forEach(function (item) {
+                item.remove();
+            });
+
+            const fields = getFields();
+
+            for (const field of fields) {
+                if (!field.name) {
+                    continue;
+                }
+
+                if (form.contains(field)) {
+                    continue;
+                }
+
+                if (field.type === 'radio' && !field.checked) {
+                    continue;
+                }
+
+                const hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = field.name;
+                hidden.className = 'js-page-state-hidden';
+
+                if (field.type === 'checkbox') {
+                    hidden.value = field.checked ? 'true' : 'false';
+                } else {
+                    hidden.value = field.value ?? '';
+                }
+
+                form.appendChild(hidden);
+            }
+
+            const showDeepFeelingsResults = document.createElement('input');
+            showDeepFeelingsResults.type = 'hidden';
+            showDeepFeelingsResults.name = 'ShowDeepFeelingsResults';
+            showDeepFeelingsResults.value = @Html.Raw(Model.ShowDeepFeelingsResults ? "'true'" : "'false'");
+            showDeepFeelingsResults.className = 'js-page-state-hidden';
+            form.appendChild(showDeepFeelingsResults);
+        }
+
+        function restoreState() {
+            const state = loadState();
+
+            for (const field of getFields()) {
+                if (!(field.name in state)) {
+                    continue;
+                }
+
+                if (field.type === 'checkbox') {
+                    field.checked = !!state[field.name];
+                    continue;
+                }
+
+                if (field.type === 'radio') {
+                    field.checked = state[field.name] === field.value;
+                    continue;
+                }
+
+                if (!field.value) {
+                    field.value = state[field.name] ?? '';
+                }
+            }
+        }
+
+        document.addEventListener('input', function (event) {
+            if (event.target && event.target.matches(selector)) {
+                saveState();
+            }
+        });
+
+        document.addEventListener('change', function (event) {
+            if (event.target && event.target.matches(selector)) {
+                saveState();
+            }
+        });
+
+        document.addEventListener('submit', function (event) {
+            if (event.target && event.target.matches('form')) {
+                saveState();
+                appendPageStateToForm(event.target);
+            }
+        }, true);
+
+        restoreState();
+        saveState();
+    })();
+</script>
